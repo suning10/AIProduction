@@ -7,7 +7,7 @@ from typing import (
 )
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_openai import ChatOpenAI
+import langchain_openai
 from pydantic import SecretStr
 
 from app.core.config import (
@@ -30,7 +30,7 @@ class LLMRegistry:
     LLMS: List[Dict[str, Any]] = [
         {
             "name": "gpt-5-mini",
-            "llm": ChatOpenAI(
+            "llm": langchain_openai.ChatOpenAI(
                 model="gpt-5-mini",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
@@ -39,7 +39,7 @@ class LLMRegistry:
         },
         {
             "name": "gpt-5.4",
-            "llm": ChatOpenAI(
+            "llm": langchain_openai.ChatOpenAI(
                 model="gpt-5",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
@@ -48,7 +48,7 @@ class LLMRegistry:
         },
         {
             "name": "gpt-5.4-nano",
-            "llm": ChatOpenAI(
+            "llm": langchain_openai.ChatOpenAI(
                 model="gpt-5.4-nano",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
@@ -57,7 +57,7 @@ class LLMRegistry:
         },
         {
             "name": "gpt-5",
-            "llm": ChatOpenAI(
+            "llm": langchain_openai.ChatOpenAI(
                 model="gpt-5",
                 api_key=_API_KEY,
                 model_kwargs=_TOKEN_LIMIT,
@@ -93,7 +93,7 @@ class LLMRegistry:
 
         if kwargs:
             logger.debug("creating_llm_with_custom_args", model_name=model_name, custom_args=list(kwargs.keys()))
-            return ChatOpenAI(model=model_name, api_key=_API_KEY, **kwargs)
+            return langchain_openai.ChatOpenAI(model=model_name, api_key=_API_KEY, **kwargs)
 
         logger.debug("using_default_llm_instance", model_name=model_name)
         return model_entry["llm"]
