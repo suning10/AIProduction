@@ -1,5 +1,12 @@
-Summary
-
+# Summary
+- CompiledStateGraph [compiled](#note-1-comiledstategraph)
+  - Build 
+- Command VS Conditioanal Edge [command](#note-2-command-vs-conditionaledge)
+  - Command is more dynamic 
+  - Args:
+    - resume 
+    - update
+    - goto 
 
 ## Note 1: ComiledStateGraph
 
