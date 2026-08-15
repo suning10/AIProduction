@@ -15,6 +15,7 @@
 
 
 ### async for
+- only useful when streaming 
 ```python
 async for token, _ in graph.astream(
     graph_input,
