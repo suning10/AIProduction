@@ -1,11 +1,11 @@
 # Summary
 
 ## use case
-- prefix cache -> provide by LLM Provider 
+- prefix cache -> provide by LLM Provider
   - system prompt
 - Exact match cache
-  - in Memory 
-  - Redis 
+  - in Memory
+  - Redis
     - Cross Session
 ```text
 Request
@@ -31,27 +31,27 @@ Request
 
 ![img_1.png](img_1.png)
 
-## mem0 + cache 
+## mem0 + cache
 
 - mem0: used for long term memory + another layer of caching
-  - LLM + Embedding 
-    - LLM: a smaller model -> semantic search 
-      - Returns a decision 
+  - LLM + Embedding
+    - LLM: a smaller model -> semantic search
+      - Returns a decision
         - Add / Delete / skip
-    - Embedding -> key 
+    - Embedding -> key
       - similar query have before?
   - Use Async save to mem0 [how to save](#add-to-mem0)
   - Mem0 is running locally with config (PGVector or have cloud version)
 
 ### add to mem0
-- note that metadata is very important 
+- note that metadata is very important
   - used for filter
 
 ```text
-mem0's search() accepts a filters param that can query on metadata fields (in addition to the required user_id). 
+mem0's search() accepts a filters param that can query on metadata fields (in addition to the required user_id).
 E.g. if you tag memories with {"category": "preference"} vs {"category": "order_history"}, you can later search o
-nly within one category rather than across everything the user has ever said. Your current search() doesn't pass filters, 
-so any metadata you're attaching right now is stored but not actually being used to narrow retrieval yet — worth knowing 
+nly within one category rather than across everything the user has ever said. Your current search() doesn't pass filters,
+so any metadata you're attaching right now is stored but not actually being used to narrow retrieval yet — worth knowing
 there's unused capability here.
 ```
 ```python
@@ -72,8 +72,8 @@ there's unused capability here.
 ![img_2.png](img_2.png)
 
 ### Search
-- search take care of the vector search 
-  - it only use **Embedding** to find top N matches 
+- search take care of the vector search
+  - it only use **Embedding** to find top N matches
 ```python
  memory = await self._get_memory()
 # can add filter = to leverage metadata for quicker performance

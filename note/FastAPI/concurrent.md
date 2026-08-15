@@ -5,12 +5,12 @@
 - Concurrent: [toolcall](../../app/core/langgraph/graph.py) line 210
   - Asyncio.gather()
     - fire all tasks at the same time
-- Async and Await 
-  - Create a coroutine 
-    - while waiting on I/O or response won't freeze the event loop 
-    - still execute sequentially 
+- Async and Await
+  - Create a coroutine
+    - while waiting on I/O or response won't freeze the event loop
+    - still execute sequentially
 
-Async and await 
+Async and await
 ```python
 for tool_call in llm_response.tool_calls:
     tool_result = await agent.execute_tool(...)   # <- suspends HERE
@@ -52,13 +52,13 @@ Total: ~1 second
 gather preserve the order and no locking is need as long as count++ before await
 ```
 understand asyncio.gather()
-- "*" means unpack 
+- "*" means unpack
 ```python
-# this equals to 
+# this equals to
 coros = [execute_one(tc) for tc in llm_response.tool_calls]  # list comprehension instead of generator
 results = await asyncio.gather(*coros)
 
-#or 
+#or
 
 results = await asyncio.gather(
     execute_one(tool_calls[0]),
@@ -66,4 +66,3 @@ results = await asyncio.gather(
     execute_one(tool_calls[2]),
 )
 ```
-

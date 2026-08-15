@@ -2,27 +2,27 @@
 
 ## AsyncGenerator and Yield [generator](../PythonBasic/generator_function.md)
 
-- Response Returns an asyncGenerator 
+- Response Returns an asyncGenerator
   - use yield()
-    - yield is a pull model 
+    - yield is a pull model
       - produce at its own speed [compare](#pull-vs-push)
 - Enable in LLM side
-  - graph.astream_events() -> most granular 
-  - graph.astream() 
+  - graph.astream_events() -> most granular
+  - graph.astream()
   - stream_mode="messages" -> token by token
 - How to consume a generator function [example](#how-to-consume-a-generator-function-)
-  - StreamingResponse itself has async for loop to consume generator function 
+  - StreamingResponse itself has async for loop to consume generator function
 
 
 ### async for
-- only useful when streaming 
+- only useful when streaming
 ```python
 async for token, _ in graph.astream(
     graph_input,
     config,
     stream_mode="messages",
 ):
-    # filter anything not ai message , eg human 
+    # filter anything not ai message , eg human
     if not isinstance(token, (AIMessage, AIMessageChunk)):
         continue
 
@@ -31,7 +31,7 @@ async for token, _ in graph.astream(
         yield text
 ```
 
-### How to Consume a generator function 
+### How to Consume a generator function
 ```python
 async def event_generator():
     yield "data: Hello\n\n"
@@ -97,7 +97,7 @@ LLM (slow producer)    FastAPI (pull)     Browser (consumer)
        │ (thinking...)      │                   │ (waiting)
        │──token──▶          │                   │
        │                    │──chunk──▶          │
-       
+
 # Browser is always waiting for LLM
 # Never the other way around
 # So backpressure is not a real concern here
