@@ -16,3 +16,4 @@ class GraphState(BaseModel):
         default_factory=list, description="The messages in the conversation"
     )
     long_term_memory: str = Field(default="", description="The long term memory of the conversation")
+    tool_call_count: int = Field(default=0, description="Number of tool-call rounds executed this turn")

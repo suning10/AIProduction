@@ -152,10 +152,33 @@ class LangGraphAgent:
         # Prepare messages with system prompt
         messages = prepare_messages(state.messages, SYSTEM_PROMPT)
 
+        tool_limit_reached = state.tool_call_count >= settings.MAX_TOOL_CALLS_PER_TURN
+        if tool_limit_reached:
+            messages = messages + [
+                Message(
+                    role="user",
+                    content=(
+                        "Based on everything you've found so far, summarize your findings and give me "
+                        "your best answer now. Do not call any more tools."
+                    ),
+                )
+            ]
+            logger.warning(
+                "tool_call_limit_reached",
+                session_id=thread_id,
+                tool_call_count=state.tool_call_count,
+                max_tool_calls=settings.MAX_TOOL_CALLS_PER_TURN,
+            )
+
         try:
             # Use LLM service with automatic retries and circular fallback
             with llm_inference_duration_seconds.labels(model=model_name).time():
-                response_message = await self.llm_service.call(dump_messages(messages))
+                if tool_limit_reached:
+                    # model_name routes through the tool-less override path so the
+                    # model has no tool schema and cannot emit further tool_calls
+                    response_message = await self.llm_service.call(dump_messages(messages), model_name=model_name)
+                else:
+                    response_message = await self.llm_service.call(dump_messages(messages))
 
             # Process response to handle structured content blocks
             response_message = process_llm_response(response_message)
@@ -165,10 +188,11 @@ class LangGraphAgent:
                 session_id=thread_id,
                 model=model_name,
                 environment=settings.ENVIRONMENT.value,
+                tool_call_count=state.tool_call_count,
             )
 
             # Determine next node based on whether there are tool calls
-            if isinstance(response_message, AIMessage) and response_message.tool_calls:
+            if not tool_limit_reached and isinstance(response_message, AIMessage) and response_message.tool_calls:
                 goto = "tool_call"
             else:
                 goto = END
@@ -209,7 +233,7 @@ class LangGraphAgent:
         else:
             outputs = list(await asyncio.gather(*[_execute_tool(tc) for tc in tool_calls]))
 
-        return Command(update={"messages": outputs}, goto="chat")
+        return Command(update={"messages": outputs, "tool_call_count": state.tool_call_count + 1}, goto="chat")
 
     async def create_graph(self) -> Optional[CompiledStateGraph]:
         """Create and configure the LangGraph workflow.
@@ -323,7 +347,11 @@ class LangGraphAgent:
             else:
                 relevant_memory = relevant_memory or "No relevant memory found."
                 response = await graph.ainvoke(
-                    input={"messages": dump_messages(messages), "long_term_memory": relevant_memory},
+                    input={
+                        "messages": dump_messages(messages),
+                        "long_term_memory": relevant_memory,
+                        "tool_call_count": 0,
+                    },
                     config=config,
                 )
 
@@ -390,7 +418,11 @@ class LangGraphAgent:
                 graph_input = Command(resume=messages[-1].content)
             else:
                 relevant_memory = relevant_memory or "No relevant memory found."
-                graph_input = {"messages": dump_messages(messages), "long_term_memory": relevant_memory}
+                graph_input = {
+                    "messages": dump_messages(messages),
+                    "long_term_memory": relevant_memory,
+                    "tool_call_count": 0,
+                }
 
             async for token, _ in graph.astream(
                 graph_input,
