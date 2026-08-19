@@ -1,17 +1,17 @@
 # Summary
 
-## how to fire subagent concurrently 
+## how to fire subagent concurrently
  - core design [design](#design-)
-   - one lead agent decompose the question 
-     - 1 agent need -> use single agent 
+   - one lead agent decompose the question
+     - 1 agent need -> use single agent
      - gt 2 agent -> orchestrator-worker
-       - lead assign subtasks 
+       - lead assign subtasks
        - Langgraph Send handles concurrent and fan-out subagent tasks
-         - no asyncio.gather required 
+         - no asyncio.gather required
 
 
 
-### example for send 
+### example for send
 ```python
 And the pseudocode for the lead agent's decompose step:
 
@@ -57,6 +57,5 @@ def route_subtasks(state: SharedState):
 
 Key design point baked in: the lead agent doesn't just decompose — it also tags dependencies, so `route_subtasks` knows what's safe to `Send` in parallel versus what has to wait for a prior subagent's output. That's the piece that keeps you from accidentally racing dependent subtasks against each other.
 
-### design 
+### design
 ![img_3.png](img_3.png)
-
