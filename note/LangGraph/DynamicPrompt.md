@@ -7,6 +7,10 @@
 - current_date_time
 - user context 
 
+## use format to load template dynamically at runtime [format](#format)
+- slower and heavier cost as it involves function call
+- f is preferred 
+
 
 ```makefile
 # Name: {agent_name}
@@ -42,5 +46,23 @@ def load_system_prompt(username: Optional[str] = None, **kwargs):
         user_context=user_context,
         **kwargs,
     )
+
+```
+```python
+# call it like
+SYSTEM_PROMPT = load_system_prompt(username = username, long_term_memory = state.long_term_memory)
+```
+
+
+### format
+```python
+name = "Alice"
+age = 30
+
+# Positional arguments
+print("My name is {} and I am {} years old.".format(name, age))
+
+# Keyword/Named arguments
+print("My name is {n} and I am {a} years old.".format(n=name, a=age))
 
 ```

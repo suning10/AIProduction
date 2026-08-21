@@ -3,7 +3,7 @@
 ## use case
 - prefix cache -> provide by LLM Provider
   - system prompt
-- Exact match cache
+- Exact match cache [inMemoryandReid](InMemoryAndRedis.md)
   - in Memory
   - Redis
     - Cross Session
@@ -29,7 +29,7 @@ Request
 └─────────────────────────────┘
 ```
 
-![img_1.png](img_1.png)
+![img_1.png](../img_1.png)
 
 ## mem0 + cache
 
@@ -69,7 +69,7 @@ there's unused capability here.
         except Exception as e:
             logger.exception("failed_to_update_long_term_memory", user_id=user_id, error=str(e))
 ```
-![img_2.png](img_2.png)
+![img_2.png](../img_2.png)
 
 ### Search
 - search take care of the vector search
