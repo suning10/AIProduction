@@ -155,6 +155,8 @@ Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interac
 | [Authentication](docs/authentication.md) | JWT flow, sessions, endpoint reference |
 | [Database & Migrations](docs/database.md) | Schema, Alembic migrations, pgvector |
 | [LLM Service](docs/llm-service.md) | Models, retries, fallback, timeout budget |
+| [Skills](docs/skills.md) | Markdown-defined procedures loaded on demand via `load_skill` |
+| [Agent Swarm](docs/agent-swarm.md) | Lead agent query decomposition, parallel workers, synthesis |
 | [Memory](docs/memory.md) | mem0 long-term memory, cache layer |
 | [Observability](docs/observability.md) | Langfuse, structured logging, Prometheus, profiling |
 | [Evaluation](docs/evaluation.md) | Eval framework, custom metrics, reports |

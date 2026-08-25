@@ -13,9 +13,12 @@ from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
     BaseMessage,
+    HumanMessage,
+    SystemMessage,
     ToolMessage,
     convert_to_openai_messages,
 )
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import (
@@ -23,12 +26,14 @@ from langgraph.graph import (
     StateGraph,
 )
 from langchain_core.runnables.config import RunnableConfig
+from langgraph.graph.message import add_messages
 from langgraph.graph.state import (
     Command,
     CompiledStateGraph,
 )
 from langgraph.types import (
     RetryPolicy,
+    Send,
     StateSnapshot,
 )
 from psycopg import (
@@ -49,10 +54,14 @@ from app.core.langgraph.tools import tools
 from app.core.logging import logger
 from app.core.metrics import llm_inference_duration_seconds
 from app.core.observability import langfuse_callback_handler
-from app.core.prompts import load_system_prompt
+from app.core.prompts import (
+    DECOMPOSITION_PROMPT,
+    load_system_prompt,
+)
 from app.schemas import (
     GraphState,
     Message,
+    QueryPlan,
 )
 from app.services.llm import llm_service
 from app.services.memory import memory_service
@@ -79,6 +88,10 @@ class LangGraphAgent:
         self.llm_service = llm_service
         self.llm_service.bind_tools(tools)
         self.tools_by_name = {tool.name: tool for tool in tools}
+        # Workers run in parallel swarm branches and never get ask_human — pausing
+        # one branch of a parallel swarm to ask the user is a known LangGraph
+        # sharp edge (which branch would resume?), so it's out of scope for now.
+        self._worker_tools: list[BaseTool] = [tool for tool in tools if tool.name != "ask_human"]
         self._connection_pool: Optional[PostgresConnPool] = None
         self._graph: Optional[CompiledStateGraph] = None
         logger.info(
@@ -127,12 +140,26 @@ class LangGraphAgent:
                 raise e
         return self._connection_pool
 
-    async def _chat(self, state: GraphState, config: RunnableConfig) -> Command:
+    async def _chat(
+        self,
+        state: GraphState,
+        config: RunnableConfig,
+        allowed_tools: Optional[list[BaseTool]] = None,
+        tool_call_limit: int = settings.MAX_TOOL_CALLS_PER_TURN,
+    ) -> Command:
         """Process the chat state and generate a response.
 
         Args:
-            state (GraphState): The current state of the conversation.
-            config (RunnableConfig): The runnable configuration for this invocation.
+            state: The current state of the conversation.
+            config: The runnable configuration for this invocation.
+            allowed_tools: When set, scopes this call to exactly this tool
+                list instead of the default all-tools-bound model. Used by
+                worker agents, which get every tool except ``ask_human``.
+                ``None`` uses the default toolset.
+            tool_call_limit: Tool-call rounds allowed before this node forces
+                a final answer with no further tool calls. Workers pass
+                ``settings.MAX_TOOL_CALLS_PER_WORKER`` here instead of the
+                default per-turn budget.
 
         Returns:
             Command: Command object with updated state and next node to execute.
@@ -152,7 +179,7 @@ class LangGraphAgent:
         # Prepare messages with system prompt
         messages = prepare_messages(state.messages, SYSTEM_PROMPT)
 
-        tool_limit_reached = state.tool_call_count >= settings.MAX_TOOL_CALLS_PER_TURN
+        tool_limit_reached = state.tool_call_count >= tool_call_limit
         if tool_limit_reached:
             messages = messages + [
                 Message(
@@ -167,7 +194,7 @@ class LangGraphAgent:
                 "tool_call_limit_reached",
                 session_id=thread_id,
                 tool_call_count=state.tool_call_count,
-                max_tool_calls=settings.MAX_TOOL_CALLS_PER_TURN,
+                max_tool_calls=tool_call_limit,
             )
 
         try:
@@ -177,6 +204,8 @@ class LangGraphAgent:
                     # model_name routes through the tool-less override path so the
                     # model has no tool schema and cannot emit further tool_calls
                     response_message = await self.llm_service.call(dump_messages(messages), model_name=model_name)
+                elif allowed_tools is not None:
+                    response_message = await self.llm_service.call(dump_messages(messages), tools=allowed_tools)
                 else:
                     response_message = await self.llm_service.call(dump_messages(messages))
 
@@ -235,6 +264,126 @@ class LangGraphAgent:
 
         return Command(update={"messages": outputs, "tool_call_count": state.tool_call_count + 1}, goto="chat")
 
+    async def _plan(self, state: GraphState, config: RunnableConfig) -> Command:
+        """Classify the incoming query and route it to the single agent or a worker swarm.
+
+        Args:
+            state: The current state of the conversation.
+            config: The runnable configuration for this invocation.
+
+        Returns:
+            Command: routes to "chat" for simple queries (the common case),
+                or dynamically fans out to parallel "worker" branches — one
+                per subtask — for genuinely complex, decomposable queries.
+        """
+        thread_id = config.get("configurable", {}).get("thread_id")
+        user_query = extract_text_content(state.messages[-1].content) if state.messages else ""
+
+        try:
+            plan: QueryPlan = await self.llm_service.call(
+                [SystemMessage(content=DECOMPOSITION_PROMPT), HumanMessage(content=user_query)],
+                model_name="gpt-5.4-nano",
+                response_format=QueryPlan,
+                reasoning={"effort": "low"},
+            )
+        except Exception:
+            logger.exception("query_decomposition_failed", session_id=thread_id)
+            return Command(goto="chat")
+
+        if plan.complexity == "simple" or not plan.subtasks:
+            logger.info("query_routed_simple", session_id=thread_id)
+            return Command(goto="chat")
+
+        subtasks = plan.subtasks[: settings.MAX_SUBTASKS]
+        logger.info("query_routed_complex", session_id=thread_id, subtask_count=len(subtasks))
+        return Command(
+            update={"subtasks": subtasks},
+            goto=[
+                Send("worker", {"messages": [{"role": "user", "content": subtask}], "long_term_memory": state.long_term_memory})
+                for subtask in subtasks
+            ],
+        )
+
+    async def _worker(self, state: GraphState, config: RunnableConfig) -> Command:
+        """Run one decomposed subtask to completion.
+
+        Reuses ``_chat``/``_tool_call`` directly as a small local loop rather
+        than the registered "chat"/"tool_call" graph nodes, so N of these can
+        run concurrently as parallel ``Send`` branches without interfering
+        with each other's state. Scoped to the worker toolset (no
+        ``ask_human``) and a smaller per-worker tool-call budget.
+
+        Args:
+            state: This branch's scoped state — the subtask as its only
+                message, via the ``Send`` payload from ``_plan``.
+            config: The runnable configuration for this invocation.
+
+        Returns:
+            Command: appends this worker's answer to the shared
+                ``subtask_results`` list (merged via its ``operator.add``
+                reducer) and routes to "synthesize".
+        """
+        local_state = state
+        while True:
+            chat_command = await self._chat(
+                local_state,
+                config,
+                allowed_tools=self._worker_tools,
+                tool_call_limit=settings.MAX_TOOL_CALLS_PER_WORKER,
+            )
+            chat_update = cast(dict, chat_command.update)
+            local_state.messages = cast(list, add_messages(local_state.messages, chat_update["messages"]))
+            if chat_command.goto == END:
+                break
+
+            tool_command = await self._tool_call(local_state)
+            tool_update = cast(dict, tool_command.update)
+            local_state.messages = cast(list, add_messages(local_state.messages, tool_update["messages"]))
+            local_state.tool_call_count = tool_update["tool_call_count"]
+
+        result_text = extract_text_content(local_state.messages[-1].content) if local_state.messages else ""
+        logger.info(
+            "worker_completed",
+            session_id=config.get("configurable", {}).get("thread_id"),
+            tool_call_count=local_state.tool_call_count,
+        )
+        return Command(update={"subtask_results": [result_text]}, goto="synthesize")
+
+    async def _synthesize(self, state: GraphState, config: RunnableConfig) -> Command:
+        """Combine parallel worker findings into one final answer.
+
+        Args:
+            state: The shared state after all worker branches have
+                converged, with ``subtask_results`` merged across branches.
+            config: The runnable configuration for this invocation.
+
+        Returns:
+            Command: appends the synthesized answer and ends the turn.
+        """
+        username = config.get("metadata", {}).get("username")
+        thread_id = config.get("configurable", {}).get("thread_id")
+        original_query = extract_text_content(state.messages[-1].content) if state.messages else ""
+
+        findings = "\n\n".join(f"Finding {i + 1}: {result}" for i, result in enumerate(state.subtask_results))
+        synthesis_request = (
+            f"Original question: {original_query}\n\n"
+            f"Sub-task findings:\n{findings}\n\n"
+            "Synthesize these into one clear, direct answer to the original question."
+        )
+
+        SYSTEM_PROMPT = load_system_prompt(username=username, long_term_memory=state.long_term_memory)
+        prompt_messages = prepare_messages([Message(role="user", content=synthesis_request)], SYSTEM_PROMPT)
+
+        try:
+            response_message = await self.llm_service.call(dump_messages(prompt_messages))
+            response_message = process_llm_response(response_message)
+        except Exception as e:
+            logger.error("swarm_synthesis_failed", session_id=thread_id, error=str(e))
+            raise Exception(f"failed to synthesize swarm results: {str(e)}")
+
+        logger.info("swarm_synthesis_completed", session_id=thread_id, subtask_count=len(state.subtask_results))
+        return Command(update={"messages": [response_message]}, goto=END)
+
     async def create_graph(self) -> Optional[CompiledStateGraph]:
         """Create and configure the LangGraph workflow.
 
@@ -244,6 +393,7 @@ class LangGraphAgent:
         if self._graph is None:
             try:
                 graph_builder = StateGraph(GraphState)
+                graph_builder.add_node("plan", self._plan, destinations=("chat", "worker"))
                 graph_builder.add_node("chat", self._chat, destinations=("tool_call", END))
                 graph_builder.add_node(
                     "tool_call",
@@ -251,7 +401,9 @@ class LangGraphAgent:
                     destinations=("chat",),
                     retry_policy=RetryPolicy(max_attempts=3),
                 )
-                graph_builder.set_entry_point("chat")
+                graph_builder.add_node("worker", self._worker, destinations=("synthesize",))
+                graph_builder.add_node("synthesize", self._synthesize, destinations=(END,))
+                graph_builder.set_entry_point("plan")
                 graph_builder.set_finish_point("chat")
 
                 # Get connection pool (may be None in production if DB unavailable)
@@ -351,6 +503,8 @@ class LangGraphAgent:
                         "messages": dump_messages(messages),
                         "long_term_memory": relevant_memory,
                         "tool_call_count": 0,
+                        "subtasks": [],
+                        "subtask_results": [],
                     },
                     config=config,
                 )
@@ -422,13 +576,23 @@ class LangGraphAgent:
                     "messages": dump_messages(messages),
                     "long_term_memory": relevant_memory,
                     "tool_call_count": 0,
+                    "subtasks": [],
+                    "subtask_results": [],
                 }
 
-            async for token, _ in graph.astream(
-                graph_input,
-                config,
-                stream_mode="messages",
-            ):
+            message_stream = cast(
+                AsyncGenerator[tuple[BaseMessage, dict], None],
+                graph.astream(graph_input, config, stream_mode="messages"),
+            )
+            async for token, metadata in message_stream:
+                # Only the final answer streams to the client — "plan"'s
+                # classification and "worker"'s per-subtask research happen
+                # server-side. metadata["langgraph_node"] is set by LangGraph
+                # to whichever node is currently executing, even when that
+                # node calls _chat/_tool_call internally (as "worker" does)
+                # rather than as their own registered graph nodes.
+                if metadata.get("langgraph_node") not in ("chat", "synthesize"):
+                    continue
                 if not isinstance(token, (AIMessage, AIMessageChunk)):
                     continue
 

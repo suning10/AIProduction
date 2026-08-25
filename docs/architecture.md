@@ -13,7 +13,7 @@ graph TB
     end
 
     subgraph Agent["LangGraph Agent"]
-        Graph["StateGraph\n(chat → tool_call → chat)"]
+        Graph["StateGraph\n(plan → chat ⇄ tool_call,\nor plan → worker × N → synthesize)"]
         Checkpointer["AsyncPostgresSaver\n(conversation state)"]
     end
 
@@ -85,19 +85,31 @@ sequenceDiagram
 
 ## Agent graph
 
-The agent is a two-node `StateGraph`:
+Every turn starts at a lead agent (`plan`) that classifies the query as simple or complex, then either runs the single-agent loop directly or fans out to a parallel worker swarm:
 
 ```mermaid
-graph LR
-    START --> chat
+graph TB
+    START --> plan
+    plan -->|simple| chat
+    plan -->|"complex: Send × N"| worker1[worker]
+    plan -->|"complex: Send × N"| worker2[worker]
+    plan -->|"complex: Send × N"| workerN["worker ..."]
     chat -->|tool_calls present| tool_call
     tool_call --> chat
     chat -->|no tool_calls| END
+    worker1 --> synthesize
+    worker2 --> synthesize
+    workerN --> synthesize
+    synthesize --> END
 ```
 
-- **`chat` node** — builds the system prompt, calls the LLM, returns a `Command` routing to `tool_call` or `END`
-- **`tool_call` node** — executes all tool calls concurrently, feeds results back to `chat`
-- **Checkpointer** — `AsyncPostgresSaver` persists the full `GraphState` per `thread_id` (session), enabling resume on interrupts and multi-turn memory
+- **`plan` node (lead agent)** — a cheap structured-output call (`gpt-5.4-nano`) classifies the query as `"simple"` or `"complex"`. Simple (the common case) routes straight to `chat`, unchanged from before. Complex decomposes the query into independent subtasks and dynamically fans out to one `worker` branch per subtask via LangGraph's `Send` API. Classification errors fail open to the simple path rather than failing the request.
+- **`chat` node** — builds the system prompt, calls the LLM, returns a `Command` routing to `tool_call` or `END`. Bounded by `MAX_TOOL_CALLS_PER_TURN` tool-call rounds; once reached, it's called again with tools omitted so the model must answer with what it has instead of looping forever.
+- **`tool_call` node** — executes all tool calls concurrently, feeds results back to `chat`.
+- **`worker` node** — runs one subtask to completion by directly calling the same `chat`/`tool_call` methods in a local loop (not as separate graph steps), so N workers execute concurrently without interfering with each other's state. Workers get every tool except `ask_human` (pausing one branch of a parallel swarm to ask the user is a known LangGraph sharp edge) and a smaller `MAX_TOOL_CALLS_PER_WORKER` budget. Each worker's answer is appended to `subtask_results`, a state field merged across parallel branches via an `operator.add` reducer.
+- **`synthesize` node** — runs once all worker branches converge, combining every `subtask_results` entry into one final answer.
+- **Streaming** — only `chat` and `synthesize` token output reaches the client (`get_stream_response` filters on `metadata["langgraph_node"]`); `plan`'s classification and worker execution happen server-side.
+- **Checkpointer** — `AsyncPostgresSaver` persists the full `GraphState` per `thread_id` (session), enabling resume on interrupts and multi-turn memory. `tool_call_count`, `subtasks`, and `subtask_results` are reset to empty at the start of each fresh (non-resumed) turn.
 
 ## Key design decisions
 

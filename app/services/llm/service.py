@@ -15,6 +15,7 @@ from typing import (
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage
+from langchain_core.tools import BaseTool
 from openai import (
     APIError,
     APITimeoutError,
@@ -88,6 +89,7 @@ class LLMService:
         messages: LanguageModelInput,
         model_name: Optional[str] = ...,
         response_format: None = ...,
+        tools: Optional[List[BaseTool]] = ...,
         **model_kwargs: Any,
     ) -> BaseMessage: ...
 
@@ -98,6 +100,7 @@ class LLMService:
         model_name: Optional[str] = ...,
         *,
         response_format: Type[T],
+        tools: Optional[List[BaseTool]] = ...,
         **model_kwargs: Any,
     ) -> T: ...
 
@@ -106,6 +109,7 @@ class LLMService:
         messages: LanguageModelInput,
         model_name: Optional[str] = None,
         response_format: Optional[Type[BaseModel]] = None,
+        tools: Optional[List[BaseTool]] = None,
         **model_kwargs: Any,
     ) -> Union[BaseMessage, BaseModel]:
         """Call the LLM with retries and circular fallback.
@@ -117,6 +121,11 @@ class LLMService:
                 provided the call chains ``.with_structured_output(schema)``
                 and returns a validated instance of that schema instead of a
                 raw ``BaseMessage``.
+            tools: When provided, binds this exact tool list to a one-off
+                model instance for this call only — ``self._llm`` (the
+                default, tool-bound path) is never touched. Pass ``[]`` to
+                call with no tools at all. ``None`` (default) uses the
+                current default model's existing tool bindings.
             **model_kwargs: Extra kwargs forwarded to ``LLMRegistry.get`` when
                 constructing a one-off model instance (e.g. ``temperature``,
                 ``max_tokens``, ``reasoning``).
@@ -131,7 +140,7 @@ class LLMService:
         """
         try:
             return await asyncio.wait_for(
-                self._call_with_fallback(messages, model_name, response_format, model_kwargs),
+                self._call_with_fallback(messages, model_name, response_format, tools, model_kwargs),
                 timeout=settings.LLM_TOTAL_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -241,6 +250,7 @@ class LLMService:
         messages: LanguageModelInput,
         model_name: Optional[str],
         response_format: Optional[Type[BaseModel]],
+        tools: Optional[List[BaseTool]],
         model_kwargs: dict,
     ) -> Union[BaseMessage, BaseModel]:
         """Build path-specific strategies and delegate to the shared fallback loop.
@@ -256,7 +266,11 @@ class LLMService:
 
         def _override_target(idx: int) -> Any:
             base = LLMRegistry.get(LLMRegistry.LLMS[idx]["name"], **model_kwargs)
-            return base.with_structured_output(response_format) if response_format else base
+            if response_format:
+                return base.with_structured_output(response_format)
+            if tools is not None:
+                return base.bind_tools(tools)
+            return base
 
         def _default_target(_: int) -> Any:
             return self._llm
@@ -264,7 +278,7 @@ class LLMService:
         def _default_advance(_: int) -> Optional[int]:
             return self._current_model_index if self._switch_to_next_model() else None
 
-        if model_name or response_format or model_kwargs:
+        if model_name or response_format or model_kwargs or tools is not None:
             all_names = LLMRegistry.get_all_names()
             if model_name and model_name not in all_names:
                 logger.error("requested_model_not_found", model_name=model_name)
