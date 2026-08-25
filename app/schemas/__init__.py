@@ -11,6 +11,7 @@ from app.schemas.chat import (
 from app.schemas.graph import (
     GraphState,
     QueryPlan,
+    ToolCallRecord,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "StreamResponse",
     "GraphState",
     "QueryPlan",
+    "ToolCallRecord",
 ]

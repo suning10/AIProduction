@@ -13,6 +13,15 @@ from pydantic import (
 )
 
 
+class ToolCallRecord(BaseModel):
+    """One executed (or reused-from-cache) tool call, for repeat/cycle detection."""
+
+    name: str
+    args: dict
+    signature: str
+    result: str
+
+
 class GraphState(BaseModel):
     """State definition for the LangGraph Agent/Workflow."""
 
@@ -24,6 +33,9 @@ class GraphState(BaseModel):
     subtasks: list[str] = Field(default_factory=list, description="Subtasks from the lead agent's decomposition")
     subtask_results: Annotated[list[str], operator.add] = Field(
         default_factory=list, description="Worker outputs, merged across parallel branches"
+    )
+    action_history: list[ToolCallRecord] = Field(
+        default_factory=list, description="Tool calls executed this turn/worker-run, for repeat/cycle detection"
     )
 
 

@@ -62,12 +62,16 @@ from app.schemas import (
     GraphState,
     Message,
     QueryPlan,
+    ToolCallRecord,
 )
 from app.services.llm import llm_service
 from app.services.memory import memory_service
 from app.utils import (
+    compute_call_signature,
+    detect_cycle,
     dump_messages,
     extract_text_content,
+    find_duplicate_call,
     prepare_messages,
     process_llm_response,
 )
@@ -240,29 +244,70 @@ class LangGraphAgent:
     async def _tool_call(self, state: GraphState) -> Command:
         """Process tool calls from the last message.
 
+        Detects exact-duplicate and near-duplicate (string-similarity on args)
+        repeat calls against this turn's ``action_history``, reusing the
+        cached result instead of re-invoking the tool. Also detects
+        oscillating call patterns (e.g. A, B, A, B) across the accumulated
+        history and appends a corrective note to this round's tool results
+        when found.
+
         Args:
             state: The current agent state containing messages and tool calls.
 
         Returns:
-            Command: Command object with updated messages and routing back to chat.
+            Command: Command object with updated messages, action_history,
+                and tool_call_count, routing back to chat.
         """
         tool_calls = state.messages[-1].tool_calls
+        history = state.action_history
 
-        async def _execute_tool(tool_call: dict) -> ToolMessage:
-            tool_result = await self.tools_by_name[tool_call["name"]].ainvoke(tool_call["args"])
-            return ToolMessage(
-                content=tool_result,
-                name=tool_call["name"],
-                tool_call_id=tool_call["id"],
-            )
+        async def _execute_tool(tool_call: dict) -> tuple[ToolMessage, ToolCallRecord]:
+            name, args = tool_call["name"], tool_call["args"]
+            duplicate = find_duplicate_call(name, args, history, settings.TOOL_CALL_SIMILARITY_THRESHOLD)
+
+            if duplicate is not None:
+                logger.warning("duplicate_tool_call_detected", tool_name=name, matched_signature=duplicate.signature)
+                result = duplicate.result
+                content = (
+                    "[Note: this call repeats one you already made — reusing the previous result "
+                    f"instead of calling the tool again. Try a different approach.]\n\n{result}"
+                )
+            else:
+                result = await self.tools_by_name[name].ainvoke(args)
+                content = result
+
+            record = ToolCallRecord(name=name, args=args, signature=compute_call_signature(name, args), result=result)
+            return ToolMessage(content=content, name=name, tool_call_id=tool_call["id"]), record
 
         # Execute tool calls concurrently when multiple are requested
         if len(tool_calls) == 1:
-            outputs = [await _execute_tool(tool_calls[0])]
+            results = [await _execute_tool(tool_calls[0])]
         else:
-            outputs = list(await asyncio.gather(*[_execute_tool(tc) for tc in tool_calls]))
+            results = list(await asyncio.gather(*[_execute_tool(tc) for tc in tool_calls]))
 
-        return Command(update={"messages": outputs, "tool_call_count": state.tool_call_count + 1}, goto="chat")
+        outputs = [result[0] for result in results]
+        updated_history = history + [result[1] for result in results]
+
+        cycle_period = detect_cycle(updated_history)
+        if cycle_period is not None:
+            logger.warning("tool_call_cycle_detected", period=cycle_period, history_length=len(updated_history))
+            warning = (
+                "\n\n[Note: you're repeating the same sequence of tool calls. "
+                "Stop calling tools and answer with your best response now.]"
+            )
+            outputs = [
+                ToolMessage(content=str(output.content) + warning, name=output.name, tool_call_id=output.tool_call_id)
+                for output in outputs
+            ]
+
+        return Command(
+            update={
+                "messages": outputs,
+                "tool_call_count": state.tool_call_count + 1,
+                "action_history": updated_history,
+            },
+            goto="chat",
+        )
 
     async def _plan(self, state: GraphState, config: RunnableConfig) -> Command:
         """Classify the incoming query and route it to the single agent or a worker swarm.
@@ -340,6 +385,7 @@ class LangGraphAgent:
             tool_update = cast(dict, tool_command.update)
             local_state.messages = cast(list, add_messages(local_state.messages, tool_update["messages"]))
             local_state.tool_call_count = tool_update["tool_call_count"]
+            local_state.action_history = tool_update["action_history"]
 
         result_text = extract_text_content(local_state.messages[-1].content) if local_state.messages else ""
         logger.info(
@@ -505,6 +551,7 @@ class LangGraphAgent:
                         "tool_call_count": 0,
                         "subtasks": [],
                         "subtask_results": [],
+                        "action_history": [],
                     },
                     config=config,
                 )
@@ -578,6 +625,7 @@ class LangGraphAgent:
                     "tool_call_count": 0,
                     "subtasks": [],
                     "subtask_results": [],
+                    "action_history": [],
                 }
 
             message_stream = cast(

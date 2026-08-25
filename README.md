@@ -157,6 +157,7 @@ Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interac
 | [LLM Service](docs/llm-service.md) | Models, retries, fallback, timeout budget |
 | [Skills](docs/skills.md) | Markdown-defined procedures loaded on demand via `load_skill` |
 | [Agent Swarm](docs/agent-swarm.md) | Lead agent query decomposition, parallel workers, synthesis |
+| [Loop Detection](docs/loopdetect.md) | Repeat/near-duplicate/cycle detection in tool calls |
 | [Memory](docs/memory.md) | mem0 long-term memory, cache layer |
 | [Observability](docs/observability.md) | Langfuse, structured logging, Prometheus, profiling |
 | [Evaluation](docs/evaluation.md) | Eval framework, custom metrics, reports |
