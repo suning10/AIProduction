@@ -525,8 +525,8 @@ class LangGraphAgent:
                 "username": username,
                 "session_id": session_id,
                 "environment": settings.ENVIRONMENT.value,
-                "debug": settings.DEBUG,
-            },
+                "debug": settings.DEBUG
+            }
         }
 
         try:
