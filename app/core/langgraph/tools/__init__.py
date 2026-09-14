@@ -10,5 +10,6 @@ from langchain_core.tools.base import BaseTool
 from .ask_human import ask_human
 from .duckduckgo_search import duckduckgo_search_tool
 from .load_skill import load_skill
+from .rag_search import rag_search
 
-tools: list[BaseTool] = [duckduckgo_search_tool, ask_human, load_skill]
+tools: list[BaseTool] = [duckduckgo_search_tool, ask_human, load_skill, rag_search]
