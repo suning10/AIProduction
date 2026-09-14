@@ -12,7 +12,7 @@
       - need more than 1 example of use case
       - ways
         - more ways toward last runs
-        - Rewrite (Most Common) [Rewrite](./RAG.md)
+        - Rewrite (Most Common) [Rewrite](RAG/RAG-Rewrite.md)
     - single query
       - direct embedding
     - multiple round
