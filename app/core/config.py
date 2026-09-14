@@ -162,6 +162,17 @@ class Settings:
         self.LONG_TERM_MEMORY_MODEL = os.getenv("LONG_TERM_MEMORY_MODEL", "gpt-5-nano")
         self.LONG_TERM_MEMORY_EMBEDDER_MODEL = os.getenv("LONG_TERM_MEMORY_EMBEDDER_MODEL", "text-embedding-3-small")
         self.LONG_TERM_MEMORY_COLLECTION_NAME = os.getenv("LONG_TERM_MEMORY_COLLECTION_NAME", "longterm_memory")
+
+        # RAG (retrieval-augmented generation) Configuration
+        self.RAG_EMBEDDER_MODEL = os.getenv("RAG_EMBEDDER_MODEL", "text-embedding-3-small")
+        # Must match the embedder model's output size — text-embedding-3-small is 1536-dim.
+        # Changing the model requires a migration to resize the pgvector column.
+        self.RAG_EMBEDDING_DIMENSIONS = int(os.getenv("RAG_EMBEDDING_DIMENSIONS", "1536"))
+        self.RAG_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
+        self.RAG_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "150"))
+        self.RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+        # Cosine distance cutoff (0=identical, 2=opposite) — hits farther than this are dropped
+        self.RAG_MAX_DISTANCE = float(os.getenv("RAG_MAX_DISTANCE", "0.5"))
         # JWT Configuration
         self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
         self.JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -206,6 +217,9 @@ class Settings:
             "login": ["20 per minute"],
             "root": ["10 per minute"],
             "health": ["20 per minute"],
+            "documents": ["20 per minute"],
+            "documents_search": ["30 per minute"],
+            "groups": ["20 per minute"],
         }
 
         # Update rate limit endpoints from environment variables

@@ -13,6 +13,17 @@ from app.schemas.graph import (
     QueryPlan,
     ToolCallRecord,
 )
+from app.schemas.rag import (
+    DocumentCreate,
+    DocumentResponse,
+    GroupCreate,
+    GroupMemberAdd,
+    GroupMemberResponse,
+    GroupResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+)
 
 __all__ = [
     "Token",
@@ -24,4 +35,13 @@ __all__ = [
     "GraphState",
     "QueryPlan",
     "ToolCallRecord",
+    "DocumentCreate",
+    "DocumentResponse",
+    "GroupCreate",
+    "GroupMemberAdd",
+    "GroupMemberResponse",
+    "GroupResponse",
+    "SearchRequest",
+    "SearchResponse",
+    "SearchResult",
 ]

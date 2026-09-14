@@ -241,7 +241,7 @@ class LangGraphAgent:
             raise Exception(f"failed to get llm response after trying all models: {str(e)}")
 
     # Define our tool node
-    async def _tool_call(self, state: GraphState) -> Command:
+    async def _tool_call(self, state: GraphState, config: RunnableConfig) -> Command:
         """Process tool calls from the last message.
 
         Detects exact-duplicate and near-duplicate (string-similarity on args)
@@ -253,6 +253,11 @@ class LangGraphAgent:
 
         Args:
             state: The current agent state containing messages and tool calls.
+            config: The runnable configuration for this invocation. Forwarded
+                to each tool's ``ainvoke`` so tools can request injected
+                ``RunnableConfig`` access (e.g. the authenticated ``user_id``
+                for access-controlled tools like ``rag_search``) without the
+                LLM ever supplying or overriding it.
 
         Returns:
             Command: Command object with updated messages, action_history,
@@ -273,7 +278,7 @@ class LangGraphAgent:
                     f"instead of calling the tool again. Try a different approach.]\n\n{result}"
                 )
             else:
-                result = await self.tools_by_name[name].ainvoke(args)
+                result = await self.tools_by_name[name].ainvoke(args, config)
                 content = result
 
             record = ToolCallRecord(name=name, args=args, signature=compute_call_signature(name, args), result=result)
@@ -381,7 +386,7 @@ class LangGraphAgent:
             if chat_command.goto == END:
                 break
 
-            tool_command = await self._tool_call(local_state)
+            tool_command = await self._tool_call(local_state, config)
             tool_update = cast(dict, tool_command.update)
             local_state.messages = cast(list, add_messages(local_state.messages, tool_update["messages"]))
             local_state.tool_call_count = tool_update["tool_call_count"]
