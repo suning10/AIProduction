@@ -93,7 +93,9 @@ async def list_group_members(request: Request, group_id: int, user: User = Depen
         raise HTTPException(status_code=403, detail="not a member of this group")
 
     members = await group_service.list_members(group_id)
-    return [GroupMemberResponse(user_id=member_user.id, email=member_user.email, role=m.role) for m, member_user in members]
+    return [
+        GroupMemberResponse(user_id=member_user.id, email=member_user.email, role=m.role) for m, member_user in members
+    ]
 
 
 @router.post("/groups/{group_id}/members", response_model=GroupMemberResponse)
@@ -153,5 +155,7 @@ async def remove_group_member(
     if not removed:
         raise HTTPException(status_code=404, detail="user is not a member of this group")
 
-    logger.info("group_member_remove_requested", group_id=group_id, admin_user_id=user.id, target_user_id=target_user_id)
+    logger.info(
+        "group_member_remove_requested", group_id=group_id, admin_user_id=user.id, target_user_id=target_user_id
+    )
     return {"message": "Member removed successfully"}

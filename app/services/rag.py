@@ -37,6 +37,10 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.core.cache import (
+    cache_key,
+    cache_service,
+)
 from app.core.config import settings
 from app.core.logging import logger
 from app.models.document import (
@@ -172,7 +176,10 @@ class RAGService:
             is_owner = document.owner_id == requesting_user_id
             if not is_owner and not await group_service.is_admin(requesting_user_id, document.group_id):
                 logger.warning(
-                    "rag_delete_denied", user_id=requesting_user_id, document_id=document_id, group_id=document.group_id
+                    "rag_delete_denied",
+                    user_id=requesting_user_id,
+                    document_id=document_id,
+                    group_id=document.group_id,
                 )
                 raise PermissionError("only the owner or a group admin can delete this document")
 
@@ -251,11 +258,52 @@ class RAGService:
             for chunk, document, result_distance in rows
         ]
 
-    async def format_results(self, results: List[SearchResult]) -> str:
-        """Format search results as a citation-friendly string for the LLM."""
-        if not results:
-            return "No relevant documents found in your accessible knowledge base."
+    @staticmethod
+    def _format_chunks(results: List[SearchResult]) -> str:
+        """Join results into citation-friendly text, or "" when there are none."""
         return "\n\n".join(f"[{r.title} — chunk {r.chunk_index}]\n{r.content}" for r in results)
+
+    async def format_results(self, results: List[SearchResult]) -> str:
+        """Format search results as a citation-friendly string for the LLM, with a fallback message."""
+        return self._format_chunks(results) or "No relevant documents found in your accessible knowledge base."
+
+    async def search_context(self, user_id: Optional[str], query: str) -> str:
+        """Search the user's accessible knowledge base and return formatted context for the system prompt.
+
+        Mirrors ``app.services.memory.MemoryService.search``'s contract: no-op
+        (returns "") when there's no authenticated ``user_id``, on search
+        failure, or when nothing relevant is found — callers apply their own
+        fallback wording, matching how long-term memory is surfaced. Only
+        non-empty results are cached, since an empty hit isn't worth serving stale.
+
+        Args:
+            user_id: The searching user, as a string (session metadata carries
+                it this way). ``None`` short-circuits — anonymous sessions
+                have no group memberships to search.
+            query: The user's latest message, used as the search query.
+
+        Returns:
+            str: Formatted, citation-friendly excerpts, or "" if none apply.
+        """
+        if user_id is None:
+            return ""
+        try:
+            key = cache_key("rag", str(user_id), query)
+            cached = await cache_service.get(key)
+            if cached is not None:
+                logger.debug("rag_search_context_cache_hit", user_id=user_id)
+                return cached
+
+            results = await self.search(int(user_id), query)
+            formatted = self._format_chunks(results)
+
+            if formatted:
+                await cache_service.set(key, formatted)
+
+            return formatted
+        except Exception as e:
+            logger.exception("rag_search_context_failed", error=str(e), user_id=user_id, query=query)
+            return ""
 
 
 rag_service = RAGService()

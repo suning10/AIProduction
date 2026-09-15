@@ -66,6 +66,7 @@ from app.schemas import (
 )
 from app.services.llm import llm_service
 from app.services.memory import memory_service
+from app.services.rag import rag_service
 from app.utils import (
     compute_call_signature,
     detect_cycle,
@@ -178,7 +179,9 @@ class LangGraphAgent:
 
         username = config.get("metadata", {}).get("username")
         thread_id = config.get("configurable", {}).get("thread_id")
-        SYSTEM_PROMPT = load_system_prompt(username=username, long_term_memory=state.long_term_memory)
+        SYSTEM_PROMPT = load_system_prompt(
+            username=username, long_term_memory=state.long_term_memory, knowledge_base=state.knowledge_base
+        )
 
         # Prepare messages with system prompt
         messages = prepare_messages(state.messages, SYSTEM_PROMPT)
@@ -349,7 +352,14 @@ class LangGraphAgent:
         return Command(
             update={"subtasks": subtasks},
             goto=[
-                Send("worker", {"messages": [{"role": "user", "content": subtask}], "long_term_memory": state.long_term_memory})
+                Send(
+                    "worker",
+                    {
+                        "messages": [{"role": "user", "content": subtask}],
+                        "long_term_memory": state.long_term_memory,
+                        "knowledge_base": state.knowledge_base,
+                    },
+                )
                 for subtask in subtasks
             ],
         )
@@ -422,7 +432,9 @@ class LangGraphAgent:
             "Synthesize these into one clear, direct answer to the original question."
         )
 
-        SYSTEM_PROMPT = load_system_prompt(username=username, long_term_memory=state.long_term_memory)
+        SYSTEM_PROMPT = load_system_prompt(
+            username=username, long_term_memory=state.long_term_memory, knowledge_base=state.knowledge_base
+        )
         prompt_messages = prepare_messages([Message(role="user", content=synthesis_request)], SYSTEM_PROMPT)
 
         try:
@@ -530,15 +542,16 @@ class LangGraphAgent:
                 "username": username,
                 "session_id": session_id,
                 "environment": settings.ENVIRONMENT.value,
-                "debug": settings.DEBUG
-            }
+                "debug": settings.DEBUG,
+            },
         }
 
         try:
-            # Run state check and memory search concurrently to save 200-500ms
-            state, relevant_memory = await asyncio.gather(
+            # Run state check, memory search, and knowledge-base search concurrently to save latency
+            state, relevant_memory, knowledge_base = await asyncio.gather(
                 graph.aget_state(config),
                 memory_service.search(user_id, messages[-1].content),
+                rag_service.search_context(user_id, messages[-1].content),
             )
 
             if state.next:
@@ -549,10 +562,12 @@ class LangGraphAgent:
                 )
             else:
                 relevant_memory = relevant_memory or "No relevant memory found."
+                knowledge_base = knowledge_base or "No relevant documents found in your knowledge base."
                 response = await graph.ainvoke(
                     input={
                         "messages": dump_messages(messages),
                         "long_term_memory": relevant_memory,
+                        "knowledge_base": knowledge_base,
                         "tool_call_count": 0,
                         "subtasks": [],
                         "subtask_results": [],
@@ -613,10 +628,11 @@ class LangGraphAgent:
         graph = await self._get_graph()
 
         try:
-            # Run state check and memory search concurrently to save 200-500ms
-            state, relevant_memory = await asyncio.gather(
+            # Run state check, memory search, and knowledge-base search concurrently to save latency
+            state, relevant_memory, knowledge_base = await asyncio.gather(
                 graph.aget_state(config),
                 memory_service.search(user_id, messages[-1].content),
+                rag_service.search_context(user_id, messages[-1].content),
             )
 
             if state.next:
@@ -624,9 +640,11 @@ class LangGraphAgent:
                 graph_input = Command(resume=messages[-1].content)
             else:
                 relevant_memory = relevant_memory or "No relevant memory found."
+                knowledge_base = knowledge_base or "No relevant documents found in your knowledge base."
                 graph_input = {
                     "messages": dump_messages(messages),
                     "long_term_memory": relevant_memory,
+                    "knowledge_base": knowledge_base,
                     "tool_call_count": 0,
                     "subtasks": [],
                     "subtask_results": [],

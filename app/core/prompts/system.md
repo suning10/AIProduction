@@ -14,7 +14,9 @@ Some tasks have a dedicated skill with step-by-step guidance. When a request mat
 {available_skills}
 
 # Knowledge Base
-Use `rag_search` for questions about internal documents, policies, or other knowledge-base content that general web search wouldn't cover. It only returns results the current user has access to — never ask the user for a group or document ID.
+The excerpts below were automatically retrieved from the user's accessible knowledge base because they may be relevant to their latest message. If they answer the question, use them as your primary source and cite the document title — do not fall back to web search or your own general knowledge, and do not guess. If they say no relevant documents were found, or don't fully answer the question, you may call `rag_search` yourself with a different query to dig further before reaching for web search or general knowledge. Results are already scoped to what this user can access — never ask them for a group or document ID.
+
+{knowledge_base}
 
 # What you know about the user
 {long_term_memory}

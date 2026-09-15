@@ -159,6 +159,7 @@ Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interac
 | [Agent Swarm](docs/agent-swarm.md) | Lead agent query decomposition, parallel workers, synthesis |
 | [Loop Detection](docs/loopdetect.md) | Repeat/near-duplicate/cycle detection in tool calls |
 | [Memory](docs/memory.md) | mem0 long-term memory, cache layer |
+| [RAG](docs/rag.md) | Knowledge base retrieval, group-based access control, ingestion |
 | [Observability](docs/observability.md) | Langfuse, structured logging, Prometheus, profiling |
 | [Evaluation](docs/evaluation.md) | Eval framework, custom metrics, reports |
 | [Docker](docs/docker.md) | Docker, Compose, full monitoring stack |
