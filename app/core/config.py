@@ -158,6 +158,10 @@ class Settings:
         self.MAX_TOOL_CALLS_PER_WORKER = int(os.getenv("MAX_TOOL_CALLS_PER_WORKER", "3"))
         self.TOOL_CALL_SIMILARITY_THRESHOLD = float(os.getenv("TOOL_CALL_SIMILARITY_THRESHOLD", "0.9"))
 
+        # Skill script execution (see app/core/skills/ — bundled scripts run via run_skill_script)
+        self.SKILL_SCRIPT_TIMEOUT_SECONDS = int(os.getenv("SKILL_SCRIPT_TIMEOUT_SECONDS", "30"))
+        self.SKILL_SCRIPT_MAX_OUTPUT_CHARS = int(os.getenv("SKILL_SCRIPT_MAX_OUTPUT_CHARS", "4000"))
+
         # Long term memory Configuration
         self.LONG_TERM_MEMORY_MODEL = os.getenv("LONG_TERM_MEMORY_MODEL", "gpt-5-nano")
         self.LONG_TERM_MEMORY_EMBEDDER_MODEL = os.getenv("LONG_TERM_MEMORY_EMBEDDER_MODEL", "text-embedding-3-small")

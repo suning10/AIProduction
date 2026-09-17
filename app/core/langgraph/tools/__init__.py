@@ -11,5 +11,6 @@ from .ask_human import ask_human
 from .duckduckgo_search import duckduckgo_search_tool
 from .load_skill import load_skill
 from .rag_search import rag_search
+from .run_skill_script import run_skill_script
 
-tools: list[BaseTool] = [duckduckgo_search_tool, ask_human, load_skill, rag_search]
+tools: list[BaseTool] = [duckduckgo_search_tool, ask_human, load_skill, rag_search, run_skill_script]

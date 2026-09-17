@@ -2,18 +2,37 @@
 
 A skill is distinct from a tool (see ``app/core/langgraph/tools/``): a tool is
 a raw function call, while a skill is instructions on *when and how* to
-sequence one or more tools to accomplish a class of task. Skills are not
-always-on — they are pulled into context by the agent itself via the
-``load_skill`` tool, keeping the base system prompt lean.
+sequence one or more tools — including its own bundled scripts — to
+accomplish a class of task. Skills are not always-on — they are pulled into
+context by the agent itself via the ``load_skill`` tool, keeping the base
+system prompt lean.
 
-Skill files live alongside this module as ``*.md`` with '---' delimited
-frontmatter, e.g.:
+Each skill is a directory alongside this module containing a ``SKILL.md``
+with '---' delimited frontmatter, and optionally a ``scripts/`` subdirectory
+of Python scripts the agent can run via the ``run_skill_script`` tool:
+
+    app/core/skills/
+      web_research/
+        SKILL.md
+      text_stats/
+        SKILL.md
+        scripts/
+          text_stats.py
+
+SKILL.md format:
 
     ---
     name: web_research
     description: One-line description used to decide when to load this skill.
     ---
     <markdown body with step-by-step guidance>
+
+Scripts are discovered by presence, not declared in frontmatter — anything
+under a skill's ``scripts/`` directory is runnable by name via
+``run_skill_script(skill_name, script_name)``. The SKILL.md body is
+responsible for telling the model which scripts exist and how to call them
+(see ``text_stats/SKILL.md`` for an example); ``load_skill`` also appends a
+generated list as a safety net so the model never has to guess a script name.
 """
 
 from pathlib import Path
@@ -24,24 +43,26 @@ from app.core.logging import logger
 
 _SKILLS_DIR = Path(__file__).parent
 _FRONTMATTER_DELIMITER = "---"
+_SKILL_FILENAME = "SKILL.md"
 
 
 class SkillDefinition(BaseModel):
-    """A single skill: metadata plus its full instruction body."""
+    """A single skill: metadata, instruction body, and any bundled scripts."""
 
     name: str
     description: str
     body: str
+    scripts: dict[str, Path] = {}
 
 
-def _parse_skill_file(path: Path) -> SkillDefinition:
-    """Parse a skill markdown file with '---' delimited frontmatter.
+def _parse_skill_file(path: Path) -> tuple[str, str, str]:
+    """Parse a SKILL.md file's '---' delimited frontmatter and body.
 
     Args:
-        path: Path to the skill markdown file.
+        path: Path to the skill's SKILL.md file.
 
     Returns:
-        SkillDefinition: The parsed skill.
+        tuple[str, str, str]: The skill's (name, description, body).
 
     Raises:
         ValueError: If the file is missing frontmatter or required fields.
@@ -49,7 +70,7 @@ def _parse_skill_file(path: Path) -> SkillDefinition:
     raw = path.read_text()
     parts = raw.split(_FRONTMATTER_DELIMITER, 2)
     if len(parts) < 3:
-        raise ValueError(f"skill file missing '---' delimited frontmatter: {path.name}")
+        raise ValueError(f"skill file missing '---' delimited frontmatter: {path}")
 
     frontmatter, body = parts[1], parts[2]
     fields: dict[str, str] = {}
@@ -60,9 +81,26 @@ def _parse_skill_file(path: Path) -> SkillDefinition:
         fields[key.strip()] = value.strip()
 
     if "name" not in fields or "description" not in fields:
-        raise ValueError(f"skill file missing 'name' or 'description' in frontmatter: {path.name}")
+        raise ValueError(f"skill file missing 'name' or 'description' in frontmatter: {path}")
 
-    return SkillDefinition(name=fields["name"], description=fields["description"], body=body.strip())
+    return fields["name"], fields["description"], body.strip()
+
+
+def _discover_scripts(skill_dir: Path) -> dict[str, Path]:
+    """Find every script bundled under a skill's ``scripts/`` subdirectory.
+
+    Args:
+        skill_dir: The skill's root directory.
+
+    Returns:
+        dict[str, Path]: Script filename (e.g. "text_stats.py") to its
+            resolved path. Only these exact, pre-registered names can be
+            executed by ``run_skill_script`` — never an arbitrary path.
+    """
+    scripts_dir = skill_dir / "scripts"
+    if not scripts_dir.is_dir():
+        return {}
+    return {path.name: path.resolve() for path in sorted(scripts_dir.glob("*.py")) if path.is_file()}
 
 
 def _load_skills() -> dict[str, SkillDefinition]:
@@ -72,11 +110,22 @@ def _load_skills() -> dict[str, SkillDefinition]:
         dict[str, SkillDefinition]: Skills keyed by name.
     """
     registry: dict[str, SkillDefinition] = {}
-    for path in sorted(_SKILLS_DIR.glob("*.md")):
-        skill = _parse_skill_file(path)
-        registry[skill.name] = skill
+    for skill_dir in sorted(p for p in _SKILLS_DIR.iterdir() if p.is_dir() and not p.name.startswith("_")):
+        skill_file = skill_dir / _SKILL_FILENAME
+        if not skill_file.is_file():
+            continue
 
-    logger.info("skills_loaded", skill_count=len(registry), skill_names=list(registry.keys()))
+        name, description, body = _parse_skill_file(skill_file)
+        scripts = _discover_scripts(skill_dir)
+
+        registry[name] = SkillDefinition(name=name, description=description, body=body, scripts=scripts)
+
+    logger.info(
+        "skills_loaded",
+        skill_count=len(registry),
+        skill_names=list(registry.keys()),
+        skills_with_scripts=[s.name for s in registry.values() if s.scripts],
+    )
     return registry
 
 
