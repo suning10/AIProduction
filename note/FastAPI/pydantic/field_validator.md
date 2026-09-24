@@ -4,6 +4,14 @@
 - validate a field
 - validate multiple field
 - validate entire model
+- ... means required
+
+## when to add @classmethod
+- recall @classmethod can call without init 
+- to validate the object before it been created, must use @classmethod
+  - exception, when use model_validator(mode = "after")
+    - validate after object been created 
+    - <span style="color:yellow"> **no classmethod needed**</span>
 
 ### validate a field
 ```python
@@ -53,7 +61,7 @@ class UserRange(BaseModel):
     min_age: int
     max_age: int
 
-    @model_validator(mode="after")
+    @model_validator(mode="after") # if use mode = before, must add classmethod
     def check_age_range(self):
         if self.min_age >= self.max_age:
             raise ValueError("min_age must be less than max_age")
