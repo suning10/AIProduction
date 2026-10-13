@@ -1,0 +1,21 @@
+# Best Practice of Trunking 
+
+- Chunk by Structure 
+  - Split on natural boundary
+    - headings, sections, paragraphs
+    - fall back to fixed size when beyond char_limit
+  - start with 256 - 512 tokens
+    - small size vs large size
+      - small: more precise but lose context 
+      - large: keep context but waste prompt space 
+      - need to tune with real query
+  - use overlap 
+    - too much overlap may return duplicate result 
+    - keep between 10~20%
+  - Attach metadata to each chunk 
+    - allow for filter 
+      - show citation 
+      - "only 2026"
+  - Add Context 
+    - during retrival 
+    - See [rewrite](RAG-Rewrite.md)
