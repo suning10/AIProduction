@@ -15,3 +15,14 @@ export default function Board() {
     </>)
 }
 ```
+
+### more example
+```jsx
+export default function ({data, referesh, user}):{
+    data: Dashboard
+    refresh
+}
+
+// from admin
+<DeptPanel data={data} refresh={refresh} user={user} />
+```

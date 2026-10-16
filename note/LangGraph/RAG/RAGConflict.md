@@ -1,4 +1,28 @@
+# Summary of handle conflict 
 
+- Type of conflict 
+  - Version
+  - Scope
+  - True Conflict 
+    - Record Conflict when upload 
+
+- Detect conflict before generation 
+  - use NLI model 
+  - use embedding - semantic 
+    - add threshold
+- Resolve 
+  - **metadata is the key !** 
+  - solve by version in metadata 
+  - solve by effective data
+  - by priority 
+    - rank 2 docs by 
+      - doc_type (metadata)
+- Production
+  - use a tier solution 
+    - metadata - alwasys run o(1) 
+    - embedding ~ 2ms
+    - not passed 
+      - run NLI
 
 
 ## Handling Conflicting Documents in RAG

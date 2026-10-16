@@ -32,6 +32,23 @@ export default function Toolbar() {
   );
 }
 ```
+### help of children
+> children is a special component, it will render between tags. eg.<button\> 
+```jsx
+function Button({ onClick, children }) {
+  return (
+    <button onClick={onClick}>
+      {children}
+    </button>
+  );
+  
+  //parent 
+  //button will show Upload Image
+        <Button onClick={() => alert('Uploading!')}>
+        Upload Image
+      </Button>
+}
+```
 
 ### pass function (event handler) as props
 - similar to props 

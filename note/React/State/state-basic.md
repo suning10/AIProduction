@@ -5,6 +5,9 @@
 - why local variable is not enough 
   - React don't persist between renders
   - does not realize it needs to render again with new data
+  - eg. go to next page, show id+1
+    -  > id stay the same between render.\
+          local variable change won't trigger render
 - useStaste is a hook
   - usexxx is a hook
   - update -> remember -> render
