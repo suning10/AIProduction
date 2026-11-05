@@ -41,6 +41,25 @@ session_names_generated_total = Counter(
 )
 
 
+inventory_skus_investigated_total = Counter(
+    "inventory_skus_investigated_total",
+    "SKU/locations investigated by the inventory gap agent",
+    ["root_cause", "explained"],
+)
+
+inventory_sku_investigation_seconds = Histogram(
+    "inventory_sku_investigation_seconds",
+    "Time to investigate one SKU/location (API calls + analysis)",
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0],
+)
+
+inventory_sku_resolutions_total = Counter(
+    "inventory_sku_resolutions_total",
+    "Per-SKU resolutions produced by the inventory gap agent",
+    ["method", "needs_review"],  # method: "agent" | "template" | "fallback"
+)
+
+
 def setup_metrics(app):
     """Set up Prometheus metrics middleware and endpoints.
 

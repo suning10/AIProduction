@@ -1,0 +1,77 @@
+{
+  "_comment": "Upstream SCR API contracts (EcomToolBox SCRController, /admin/scr). Template variables in url/params/body/headers: {base_url} {days_ago} {date} {sku} {sloc} {start} {end}; ${ENV_VAR} is expanded from the environment (keep secrets there). records_path: dot path to the record list in the JSON response. field_map: canonical field -> source field (dot paths allowed). qty_multiplier flips quantity signs if a system reports outbound as positive.",
+  "envelope": {"code_path": "code", "success_values": [1], "message_path": "msg"},
+  "endpoints": {
+    "sloc_summary": {
+      "method": "GET",
+      "url": "{base_url}/admin/scr/scrReportSummary",
+      "params": {"date": "{days_ago}"},
+      "records_path": "data",
+      "field_map": {"sloc": "sloc", "skus_with_gap": "skuWithErrorNumber", "net_gap": "netGap"}
+    },
+    "gaps": {
+      "method": "GET",
+      "url": "{base_url}/admin/scr/scrReportGap",
+      "params": {"date": "{days_ago}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {
+        "sku": "material",
+        "sloc": "sloc",
+        "description": "description",
+        "nerp_qty": "nerpTotal",
+        "synapse_qty": "synapseTotal",
+        "gap": "netGap",
+        "abs_gap": "totalGap",
+        "gap_value": "netGapMapValue"
+      }
+    },
+    "day_over_day": {
+      "method": "GET",
+      "url": "{base_url}/admin/scr/dodResearch",
+      "params": {"material": "{sku}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {"date": "date", "gap": "gap"}
+    },
+    "qty_mismatch": {
+      "method": "POST",
+      "url": "{base_url}/admin/scr/skuComparision",
+      "body": {"sku": "{sku}", "start": "{start}", "end": "{end}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {
+        "reference": "reference",
+        "txn_type": "transactionType",
+        "txn_date": "transactionDate",
+        "nerp_qty": "nerpQty",
+        "synapse_qty": "synapseQty"
+      }
+    },
+    "missing_in_synapse": {
+      "method": "POST",
+      "url": "{base_url}/admin/scr/skuComparisionMissingNerp",
+      "body": {"sku": "{sku}", "start": "{start}", "end": "{end}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {"reference": "reference", "txn_type": "mvt", "txn_date": "postDate", "qty": "qty", "doc": "matDoc", "user": "userName"}
+    },
+    "missing_in_nerp": {
+      "method": "POST",
+      "url": "{base_url}/admin/scr/skuComparisionMissingItemActivity",
+      "body": {"sku": "{sku}", "start": "{start}", "end": "{end}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {"reference": "reference", "txn_type": "transactionType", "txn_date": "transactionDate", "qty": "qty", "doc": "orderId"}
+    },
+    "nerp_adjustments": {
+      "method": "POST",
+      "url": "{base_url}/admin/scr/skuDetailNERPAdj",
+      "body": {"sku": "{sku}", "start": "{start}", "end": "{end}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {"reference": "matDoc", "txn_type": "mvt", "txn_date": "postDate", "qty": "qty", "doc": "docHeader", "user": "userName"}
+    },
+    "synapse_adjustments": {
+      "method": "POST",
+      "url": "{base_url}/admin/scr/skuDetailSynapseAdj",
+      "body": {"sku": "{sku}", "start": "{start}", "end": "{end}", "sloc": "{sloc}"},
+      "records_path": "data",
+      "field_map": {"reference": "orderId", "txn_type": "transactionType", "txn_date": "transactionDate", "qty": "qty"}
+    }
+  }
+}

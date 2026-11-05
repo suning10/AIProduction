@@ -32,6 +32,7 @@ from app.core.middleware import (
 from app.core.observability import langfuse_init
 from app.services.database import database_service
 from app.services.memory import memory_service
+from app.services.inventory_client import inventory_client
 
 # Load environment variables
 load_dotenv()
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup on shutdown
     await cache_service.close()
+    await inventory_client.close()
     if agent._connection_pool:
         await agent._connection_pool.close()
         logger.info("connection_pool_closed")

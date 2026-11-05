@@ -15,6 +15,8 @@ from app.models.document import Document  # noqa: F401
 from app.models.document import DocumentChunk  # noqa: F401
 from app.models.group import Group  # noqa: F401
 from app.models.group import GroupMembership  # noqa: F401
+from app.models.inventory import InventoryInvestigation  # noqa: F401
+from app.models.inventory import InventorySkuFinding  # noqa: F401
 from app.models.session import Session  # noqa: F401
 from app.models.thread import Thread  # noqa: F401
 from app.models.user import User  # noqa: F401

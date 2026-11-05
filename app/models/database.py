@@ -8,6 +8,18 @@ from app.models.group import (
     Group,
     GroupMembership,
 )
+from app.models.inventory import (
+    InventoryInvestigation,
+    InventorySkuFinding,
+)
 from app.models.thread import Thread
 
-__all__ = ["Thread", "Group", "GroupMembership", "Document", "DocumentChunk"]
+__all__ = [
+    "Thread",
+    "Group",
+    "GroupMembership",
+    "Document",
+    "DocumentChunk",
+    "InventoryInvestigation",
+    "InventorySkuFinding",
+]

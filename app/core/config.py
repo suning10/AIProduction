@@ -183,6 +183,32 @@ class Settings:
         self.RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
         # Cosine distance cutoff (0=identical, 2=opposite) — hits farther than this are dropped
         self.RAG_MAX_DISTANCE = float(os.getenv("RAG_MAX_DISTANCE", "0.5"))
+        # Inventory gap (SCR) investigation
+        # "mock" serves the SCR APIs from an in-process fake (app/services/inventory_mock.py);
+        # "http" calls INVENTORY_API_BASE_URL using the contracts in INVENTORY_ENDPOINTS_FILE.
+        self.INVENTORY_API_MODE = os.getenv("INVENTORY_API_MODE", "mock").lower()
+        self.INVENTORY_API_BASE_URL = os.getenv("INVENTORY_API_BASE_URL", "http://localhost:80").rstrip("/")
+        self.INVENTORY_ENDPOINTS_FILE = Path(
+            os.getenv("INVENTORY_ENDPOINTS_FILE", str(Path(__file__).parent / "inventory_endpoints.json"))
+        )
+        self.INVENTORY_API_TIMEOUT_SECONDS = float(os.getenv("INVENTORY_API_TIMEOUT_SECONDS", "30"))
+        self.INVENTORY_API_CACHE_TTL_SECONDS = int(os.getenv("INVENTORY_API_CACHE_TTL_SECONDS", "300"))
+        # Storage locations to scan when a request names none; empty = discover via the summary endpoint
+        self.INVENTORY_SLOCS = parse_list_from_env("INVENTORY_SLOCS", [])
+        # Max in-flight upstream HTTP requests, and max parallel per-SKU graph branches
+        self.INVENTORY_MAX_CONCURRENCY = int(os.getenv("INVENTORY_MAX_CONCURRENCY", "8"))
+        self.INVENTORY_LOOKBACK_DAYS = int(os.getenv("INVENTORY_LOOKBACK_DAYS", "30"))
+        # Days before the gap origin included in transaction reconciliation (report snapshots lag postings)
+        self.INVENTORY_RECON_PADDING_DAYS = int(os.getenv("INVENTORY_RECON_PADDING_DAYS", "2"))
+        self.INVENTORY_MAX_SKUS = int(os.getenv("INVENTORY_MAX_SKUS", "500"))
+        self.INVENTORY_LLM_CLASSIFY_ENABLED = os.getenv("INVENTORY_LLM_CLASSIFY_ENABLED", "true").lower() == "true"
+        self.INVENTORY_MOCK_SKU_COUNT = int(os.getenv("INVENTORY_MOCK_SKU_COUNT", "40"))
+        # Per-SKU resolver agent (knowledge-base search only). SKUs that are fully explained by a single
+        # discrepancy kind with at most this many discrepancies get a templated resolution instead (0 = agent for all).
+        self.INVENTORY_TEMPLATE_MAX_DISCREPANCIES = int(os.getenv("INVENTORY_TEMPLATE_MAX_DISCREPANCIES", "3"))
+        self.INVENTORY_RESOLVE_MAX_TOOL_ROUNDS = int(os.getenv("INVENTORY_RESOLVE_MAX_TOOL_ROUNDS", "3"))
+        self.INVENTORY_KB_CACHE_TTL_SECONDS = int(os.getenv("INVENTORY_KB_CACHE_TTL_SECONDS", "3600"))
+
         # JWT Configuration
         self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
         self.JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -230,6 +256,8 @@ class Settings:
             "documents": ["20 per minute"],
             "documents_search": ["30 per minute"],
             "groups": ["20 per minute"],
+            "inventory_investigate": ["5 per minute"],
+            "inventory_read": ["60 per minute"],
         }
 
         # Update rate limit endpoints from environment variables

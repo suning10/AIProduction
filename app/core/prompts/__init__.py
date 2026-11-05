@@ -19,6 +19,15 @@ with open(os.path.join(_PROMPTS_DIR, "session_title.md"), "r") as _f:
 with open(os.path.join(_PROMPTS_DIR, "decomposition.md"), "r") as _f:
     DECOMPOSITION_PROMPT = _f.read()
 
+with open(os.path.join(_PROMPTS_DIR, "inventory_classify.md"), "r") as _f:
+    INVENTORY_CLASSIFY_PROMPT = _f.read()
+
+with open(os.path.join(_PROMPTS_DIR, "inventory_resolve.md"), "r") as _f:
+    INVENTORY_RESOLVE_PROMPT = _f.read()
+
+with open(os.path.join(_PROMPTS_DIR, "inventory_summary.md"), "r") as _f:
+    INVENTORY_SUMMARY_PROMPT = _f.read()
+
 
 def load_system_prompt(username: Optional[str] = None, **kwargs):
     """Load the system prompt from the cached template."""
