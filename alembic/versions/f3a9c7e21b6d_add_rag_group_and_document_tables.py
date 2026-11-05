@@ -14,16 +14,19 @@ import sqlmodel  # noqa: F401
 
 from alembic import op
 
+from app.core.config import settings
+
 # revision identifiers, used by Alembic.
 revision: str = "f3a9c7e21b6d"  # pragma: allowlist secret
 down_revision: Union[str, Sequence[str], None] = "b25d38b0cd7c"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Must match app.core.config.Settings.RAG_EMBEDDING_DIMENSIONS default —
-# text-embedding-3-small produces 1536-dim vectors. Changing the embedder
-# model to one with a different output size requires a follow-up migration.
-EMBEDDING_DIMENSIONS = 1536
+# Read from settings so the column matches the configured embedder at creation
+# time (default 1536 for text-embedding-3-small; e.g. 768 for a fresh DB using
+# Ollama's nomic-embed-text). Switching an *existing* DB to a different-size
+# embedder still requires a follow-up migration.
+EMBEDDING_DIMENSIONS = settings.RAG_EMBEDDING_DIMENSIONS
 
 
 def upgrade() -> None:

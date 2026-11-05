@@ -15,6 +15,9 @@ from typing import (
     Tuple,
 )
 
+import httpx
+from langchain_core.embeddings import Embeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import (
@@ -22,6 +25,7 @@ from openai import (
     APITimeoutError,
     RateLimitError,
 )
+from ollama import ResponseError as OllamaResponseError
 from pydantic import SecretStr
 from sqlalchemy import func
 from sqlmodel import (
@@ -51,6 +55,9 @@ from app.schemas.rag import SearchResult
 from app.services.database import database_service
 from app.services.group import group_service
 
+# Transient embedder failures worth retrying, for either provider.
+RETRYABLE_EMBEDDING_ERRORS = (RateLimitError, APITimeoutError, APIError, OllamaResponseError, httpx.HTTPError)
+
 
 class RAGService:
     """Service for ingesting documents into, and searching, the group-scoped knowledge base."""
@@ -58,41 +65,52 @@ class RAGService:
     def __init__(self):
         """Reuse the shared database engine; embedder is created lazily."""
         self.engine = database_service.engine
-        self._embedder: Optional[OpenAIEmbeddings] = None
+        self._embedder: Optional[Embeddings] = None
         self._splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.RAG_CHUNK_SIZE,
             chunk_overlap=settings.RAG_CHUNK_OVERLAP,
         )
 
-    def _get_embedder(self) -> OpenAIEmbeddings:
+    def _get_embedder(self) -> Embeddings:
+        """Create the embedder for ``settings.RAG_EMBEDDER_PROVIDER`` on first use.
+
+        Its output size must match ``settings.RAG_EMBEDDING_DIMENSIONS`` (the pgvector column).
+        """
         if self._embedder is None:
-            self._embedder = OpenAIEmbeddings(
-                model=settings.RAG_EMBEDDER_MODEL,
-                api_key=SecretStr(settings.OPENAI_API_KEY),
+            if settings.RAG_EMBEDDER_PROVIDER == "ollama":
+                self._embedder = OllamaEmbeddings(model=settings.RAG_EMBEDDER_MODEL, base_url=settings.OLLAMA_BASE_URL)
+            else:
+                self._embedder = OpenAIEmbeddings(
+                    model=settings.RAG_EMBEDDER_MODEL,
+                    api_key=SecretStr(settings.OPENAI_API_KEY),
+                )
+            logger.info(
+                "rag_embedder_initialized", provider=settings.RAG_EMBEDDER_PROVIDER, model=settings.RAG_EMBEDDER_MODEL
             )
         return self._embedder
 
     @retry(
         stop=stop_after_attempt(settings.MAX_LLM_CALL_RETRIES),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
+        retry=retry_if_exception_type(RETRYABLE_EMBEDDING_ERRORS),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
     async def _embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed a batch of texts with automatic retry on transient API errors."""
-        return await self._get_embedder().aembed_documents(texts)
+        prefixed = [f"{settings.RAG_EMBED_DOCUMENT_PREFIX}{t}" for t in texts]
+        return await self._get_embedder().aembed_documents(prefixed)
 
     @retry(
         stop=stop_after_attempt(settings.MAX_LLM_CALL_RETRIES),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
+        retry=retry_if_exception_type(RETRYABLE_EMBEDDING_ERRORS),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
     async def _embed_query(self, text: str) -> List[float]:
         """Embed a single query string with automatic retry on transient API errors."""
-        return await self._get_embedder().aembed_query(text)
+        return await self._get_embedder().aembed_query(f"{settings.RAG_EMBED_QUERY_PREFIX}{text}")
 
     async def ingest_document(
         self,
@@ -208,6 +226,7 @@ class RAGService:
         query: str,
         group_id: Optional[int] = None,
         top_k: Optional[int] = None,
+        max_distance: Optional[float] = None,
     ) -> List[SearchResult]:
         """Search chunks in documents the user has group access to.
 
@@ -221,6 +240,8 @@ class RAGService:
                 no results if the user isn't a member of it, rather than
                 leaking whether the group exists.
             top_k: Maximum chunks to return.
+            max_distance: Cosine-distance cutoff; defaults to ``settings.RAG_MAX_DISTANCE``.
+                Evaluation tooling passes a large value to see every ranked chunk.
 
         Returns:
             list[SearchResult]: Matched chunks ordered by relevance (closest first).
@@ -241,7 +262,7 @@ class RAGService:
                 select(DocumentChunk, Document, distance.label("distance"))
                 .join(Document, col(DocumentChunk.document_id) == col(Document.id))
                 .where(col(Document.group_id).in_(accessible_group_ids))
-                .where(distance <= settings.RAG_MAX_DISTANCE)
+                .where(distance <= (settings.RAG_MAX_DISTANCE if max_distance is None else max_distance))
                 .order_by(distance)
                 .limit(top_k or settings.RAG_TOP_K)
             )

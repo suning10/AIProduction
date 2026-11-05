@@ -42,6 +42,6 @@ def load_skill(skill_name: str) -> str:
     return (
         f"{skill.body}\n\n"
         f"---\n"
-        f"Available scripts for this skill (run via run_skill_script(skill_name=\"{skill.name}\", "
+        f'Available scripts for this skill (run via run_skill_script(skill_name="{skill.name}", '
         f"script_name=...)): {script_list}"
     )

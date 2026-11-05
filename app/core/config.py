@@ -168,7 +168,13 @@ class Settings:
         self.LONG_TERM_MEMORY_COLLECTION_NAME = os.getenv("LONG_TERM_MEMORY_COLLECTION_NAME", "longterm_memory")
 
         # RAG (retrieval-augmented generation) Configuration
+        # "openai" (default) or "ollama" (local; e.g. nomic-embed-text, 768-dim)
+        self.RAG_EMBEDDER_PROVIDER = os.getenv("RAG_EMBEDDER_PROVIDER", "openai").lower()
         self.RAG_EMBEDDER_MODEL = os.getenv("RAG_EMBEDDER_MODEL", "text-embedding-3-small")
+        self.OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        # Task prefixes some embedders need (nomic: "search_document: " / "search_query: ")
+        self.RAG_EMBED_DOCUMENT_PREFIX = os.getenv("RAG_EMBED_DOCUMENT_PREFIX", "")
+        self.RAG_EMBED_QUERY_PREFIX = os.getenv("RAG_EMBED_QUERY_PREFIX", "")
         # Must match the embedder model's output size — text-embedding-3-small is 1536-dim.
         # Changing the model requires a migration to resize the pgvector column.
         self.RAG_EMBEDDING_DIMENSIONS = int(os.getenv("RAG_EMBEDDING_DIMENSIONS", "1536"))

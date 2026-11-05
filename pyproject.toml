@@ -41,6 +41,10 @@ dependencies = [
     "uvloop>=0.22.1; platform_system != 'Windows'",
     "asgi-correlation-id>=4.3.4",
     "alembic>=1.18.4",
+    "pypdf>=6.21.4",
+    "rich>=15.0.0",
+    "docling>=2.147.0",
+    "langchain-ollama>=1.0.1",
 ]
 
 [project.optional-dependencies]
